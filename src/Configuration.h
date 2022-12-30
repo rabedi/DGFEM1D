@@ -3,6 +3,7 @@
 
 #include "util/globalMacros.h"
 #include "util/globalTypesClasses.h"
+#include "util/OneDimensionalElement.h"
 
 // weights of the star values for one side of the interface
 // f_ -> factor of
@@ -31,6 +32,10 @@ public:
   void Initialize_Configuration();
 
   // inputs
+  unsigned int polyOrder;
+  // whether we want the mass-lumpting option or not
+  bool lumpMass;
+
   WeakFormulationType wf_type;
   // star options for DG method
   StarOption sOption;
@@ -66,6 +71,28 @@ public:
   bool isHelmholtz;
   double omega;
 
+  /// large class members
+  // we read / have already initialized [he, E, rho, damping] of elements[i].elementProps for each element and calculate Z, c, etc. from this
+  vector<OneDimensionalElement> elements;
+  unsigned int num_elements;
+
+  ////////////////////////////////////////////
+  // Computed
+  OneDimensionalParentElement parentElement;
+  unsigned int ndof_parent_element;
+  unsigned int ndof_element;
+  unsigned int ndof_domain;
+  // I think we can remove this for 1D DG/CFEM
+  vector<vector< int > > edof_2_globalDofMap;
+	// these are indexed by ei (element index) and store the start and end dof of element (element goes grom  = start; < end)
+  vector<int> element_start_dof;
+  vector<int> element_end_dof;
+
+
+  /////////////////////////////////// Global, K, M, C
+  // stores whether we need a damping matrix
+  bool b_hasNonZeroDampingMatrix;
+
   ///	Auxiliary functions
 
   // inputs: left_ep, right_ep -> const makes it clearer that these are inputs
@@ -80,6 +107,12 @@ public:
       bool insideDomainInterface,
       StarW2s &twoSideWeights) const; // const here says that this object
                                       // (configuration) is not changing itself
+
+private:
+	// for 1F-formulation we end up with Ma'' + Ca' + Ka = F -> damping only if we have nonzero damping at element level or we have 1Dvs formulation
+	// for 2F-formulation Ma' + Ka = F -> no damping
+	bool HasNonZeroDampingMatrix() const;
+	void Initialize_Elements();
 };
 
 #endif

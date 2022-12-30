@@ -6,8 +6,10 @@
 class ElementProperties {
 public:
   // mechanical properties
-  // inputs
-  double E, rho, damping;
+	// E, rho, damping, he, and damping given, the other computed
+	void Initialize_ElementProperties();
+	// inputs
+	double E, rho, damping;
   double hE;
 
   // computed

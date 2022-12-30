@@ -102,6 +102,7 @@ class MATRIX {
 public:
   MATRIX(unsigned int rowsIn = 0, unsigned int colsIn = 0);
   void resize(unsigned int rowsIn = 0, unsigned int colsIn = 0);
+  void Multiply(const MATRIX& matIn, double factor = 1.0);
   unsigned int rows() const;
   unsigned int columns() const;
   vector<double> &operator[](unsigned int i);

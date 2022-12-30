@@ -77,7 +77,9 @@ void Configuration::Compute_DG_Star_Weights_4_Inteior_Interface(
 
       shared_sigmaStar_wStarWeights.ws_f_wR = 0.0;
       shared_sigmaStar_wStarWeights.ws_f_wL = 1.0;
-    } else if (sOption == so_Alternating_sR) {
+    } 
+	else if (sOption == so_Alternating_sR) 
+	{
       shared_sigmaStar_wStarWeights.ss_f_sigmaL = 0.0;
       shared_sigmaStar_wStarWeights.ss_f_sigmaR = 1.0;
 
@@ -127,3 +129,127 @@ void Configuration::Compute_DG_Star_Weights_4_Inteior_Interface(
   twoSideWeights.side_weights[SDR].ws_f_sigmaL *= gamma_inv;
   twoSideWeights.side_weights[SDR].ws_f_wL *= gamma_inv;
 }
+
+bool Configuration::HasNonZeroDampingMatrix() const
+{
+	if (wf_type == DG_2FUV)
+		return false;
+	if (wf_type == DG_1F_vStar)
+		return true;
+
+	static double tol_4_damping = 1000 * DBL_MIN;
+	if ((wf_type == cfem_1D) || (wf_type == DG_1F_uStar))
+	{
+		// depends on the material damping
+		for (unsigned int ei = 0; ei < num_elements; ++ei)
+		{
+			if (elements[ei].elementProps.damping > tol_4_damping)
+				return true;
+		}
+		return false;
+	}
+}
+
+void Configuration::Initialize_Elements()
+{
+	// initialize the parent
+	parentElement.Initialize(polyOrder, lumpMass);
+	ndof_parent_element = parentElement.ndof;
+	ndof_element = ndof_parent_element * num_fields;
+
+	edof_2_globalDofMap.resize(num_elements);
+	element_start_dof.resize(num_elements);
+	element_end_dof.resize(num_elements);
+
+	edof_2_globalDofMap.clear();
+
+	if (wf_type != cfem_1D)
+	{
+		ndof_domain = ndof_element * num_elements;
+		vector<int> dof_map_element(ndof_element);
+		unsigned cntr = 0;
+		for (unsigned int ei = 0; ei < num_elements; ++ei)
+		{
+			element_start_dof[ei] = cntr;
+			element_end_dof[ei] = cntr + ndof_element;
+			for (unsigned int j = 0; j < ndof_element; ++j)
+				dof_map_element[j] = cntr++;
+			edof_2_globalDofMap.push_back(dof_map_element);
+		}
+	}
+	else
+	{
+		THROW("Add CFEM block later\n");
+	}
+
+	b_hasNonZeroDampingMatrix = HasNonZeroDampingMatrix();
+
+	for (unsigned int ei = 0; ei < num_elements; ++ei)
+	{
+		OneDimensionalElement* ePtr = &elements[ei];
+		ePtr->elementProps.Initialize_ElementProperties();
+
+		// these building blocks are mpe, kpe with 1F size but with real element geometry (size) and no material property
+		MATRIX meBuildingBlock, keBuildingBlock;
+		double Jacobian = 0.5 * ePtr->elementProps.hE;
+		keBuildingBlock.Multiply(parentElement.kpe, Jacobian);
+		meBuildingBlock.Multiply(parentElement.kpe, Jacobian);
+
+
+		ePtr->ke.resize(ndof_element);
+		ePtr->ke = 0.0;
+		ePtr->me.resize(ndof_element);
+		ePtr->me = 0.0;
+		if (b_hasNonZeroDampingMatrix)
+		{
+			ePtr->ce.resize(ndof_element);
+			ePtr->ce = 0.0;
+		}
+
+		if (wf_type == DG_2FUV)
+		{
+			double alpha = 1.0 / ePtr->elementProps.time_e;
+			alpha *= alpha;
+			for (unsigned int i = 0; i < parentElement.ndof; i)
+			{
+				for (unsigned int j = 0; j < parentElement.ndof; ++j)
+				{
+					/// stiffness term
+					// -alpha uHat * v
+					ePtr->ke[i][j + parentElement.ndof] = -alpha * meBuildingBlock[i][j];
+					// vHat * damping * v
+					ePtr->ke[i + parentElement.ndof][j + parentElement.ndof] = ePtr->elementProps.damping * meBuildingBlock[i][j];
+					// grad vHat * sigma
+					ePtr->ke[i + parentElement.ndof][j] = ePtr->elementProps.E * keBuildingBlock[i][j];
+
+					/// mass term				
+					// alpha uHat * uDot
+					ePtr->me[i][j] = alpha * meBuildingBlock[i][j];
+					// vHat * vDot
+					ePtr->me[i + parentElement.ndof][j + parentElement.ndof] = ePtr->elementProps.rho * meBuildingBlock[i][j];
+				}
+			}
+		}
+		else //if ((wf_type == DG_1F_vStar) || (wf_type == DG_1F_uStar) || (wf_type == cfem_1D))
+		{
+			for (unsigned int i = 0; i < parentElement.ndof; i)
+			{
+				for (unsigned int j = 0; j < parentElement.ndof; ++j)
+				{
+					/// stiffness term
+					// grad uHat * sigma
+					ePtr->ke[i][j] = ePtr->elementProps.E * keBuildingBlock[i][j];
+					/// mass term				
+					// uHat * vDot = uHat * uDDot
+					ePtr->me[i][j] = ePtr->elementProps.rho * meBuildingBlock[i][j];
+
+					/// damping term				
+					// uHat * damping * v = uHat * damping * uDot
+					if (b_hasNonZeroDampingMatrix)
+						ePtr->ce[i][j] = ePtr->elementProps.damping * meBuildingBlock[i][j];
+				}
+			}
+		}
+	}
+}
+

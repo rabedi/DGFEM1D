@@ -66,6 +66,20 @@ void MATRIX::resize(unsigned int rowsIn, unsigned int colsIn) {
   }
 }
 
+void MATRIX::Multiply(const MATRIX& matIn, double factor)
+{
+	nrows = matIn.nrows;
+	ncols = matIn.ncols;
+
+	matx.resize(nrows);
+	for (unsigned int i = 0; i < nrows; ++i) {
+		matx[i].resize(ncols);
+		for (unsigned int j = 0; j < ncols; ++j)
+			matx[i][j] = factor * matIn[i][j];
+	}
+}
+
+
 unsigned int MATRIX::rows() const { return nrows; }
 
 unsigned int MATRIX::columns() const { return ncols; }
